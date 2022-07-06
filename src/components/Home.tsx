@@ -32,7 +32,7 @@ import { Message, User } from '../types'
 // 15) WE CAN MAKE OTHER CLIENTS AWARE OF OUR NEW MESSAGE SETTING AN EVENT LISTENER FOR A 'message' EVENT
 // AND FILLING THEIR CHATHISTORIES AS WELL
 
-const ADDRESS = 'http://localhost:3001'
+const ADDRESS = 'http://localhost:5001'
 const socket = io(ADDRESS, { transports: ['websocket'] })
 // overriding the default trasports value in order to just leverage the
 // websocket protocol
@@ -42,8 +42,9 @@ const Home = () => {
   const [message, setMessage] = useState('')
   const [loggedIn, setLoggedIn] = useState(false)
   const [onlineUsers, setOnlineUsers] = useState<User[]>([])
-  const [chatHistory, setChatHistory] = useState<Message[]>([]) 
-  const [room, setRoom] = useState<"blue" | "red">('blue')
+  const [chatHistory, setChatHistory] = useState<Message[]>([])
+  const [room, setRoom] = useState<String>('blue')
+  const [privateId, setPrivateId] = useState<String>('')
 
   useEffect(() => {
     // this code will be executed just once!
@@ -57,27 +58,25 @@ const Home = () => {
 
     // let's now listen for another type of event, 'loggedin'
     // this should happen once AFTER sending our username
-    socket.on('loggedin', onlineUsers => {
+    socket.on('loggedin', (onlineUsers) => {
       setLoggedIn(true)
       setOnlineUsers(onlineUsers)
       // fetchOnlineUsers()
 
       // I moved this newConnection event listener in the loggedin one,
       // since I don't want this "trap" to be set from the first moment
-      socket.on('newConnection', onlineUsers => {
+      socket.on('newConnection', (onlineUsers) => {
         console.log('a new client just connected!')
         // console.log('a new challenger appears!')
         setOnlineUsers(onlineUsers)
         // fetchOnlineUsers()
-        
       })
 
       socket.on('message', (bouncedMessage) => {
-
-        console.log("MESSAGE: ", message)
+        console.log('MESSAGE: ', message)
         setChatHistory((evaluatedChatHistory) => [
           ...evaluatedChatHistory,
-          bouncedMessage,
+          bouncedMessage
         ])
         // looks like the one receiving this 'message' event is appending
         // the last message to an empty chatHistory...?
@@ -89,33 +88,24 @@ const Home = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  
   useEffect(() => {
     //let's retrieve this rooms previous chat history from the server
 
-
-    console.log("Room changed. Now it is ", room)
+    console.log('Room changed. Now it is ', room)
     socket.on('loggedin', getChatHistory)
 
     return () => {
-      console.log("Room changing. It was ", room)
+      console.log('Room changing. It was ', room)
       socket.off('loggedin', getChatHistory)
     }
-  }, [room ])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room])
 
   const handleUsernameSubmit = () => {
-    // let's send our username to the server!
-    // this time it's our turn to EMIT an EVENT to the server
-    // we need to emit an event of type 'setUsername', since this is
-    // the type of the event the server is already listening for
     socket.emit('setUsername', {
       username: username,
       room
     })
-    // after sending our username from the client,
-    // if everything goes well the backend will emit us back another event
-    // called 'loggedin' <-- this concludes the login process and puts us
-    // in the online users list
   }
 
   const sendMessage = () => {
@@ -124,16 +114,16 @@ const Home = () => {
       text: message,
       sender: username,
       createdAt: new Date().toLocaleString('en-US')
-        }
+    }
 
-    socket.emit('sendMessage', {message: newMessage, room})
+    socket.emit('sendMessage', { message: newMessage, room })
     setChatHistory([...chatHistory, newMessage])
     // this is appending my new message to the chat history in this very moment
     setMessage('')
   }
 
   const toggleRoom = () => {
-    setRoom(room => room === "blue" ? "red" : "blue")
+    setRoom((room) => (room === 'blue' ? 'red' : 'blue'))
   }
 
   const getChatHistory = async () => {
@@ -143,8 +133,15 @@ const Home = () => {
     const data = await response.json()
 
     setChatHistory(data)
+    console.log(data)
   }
 
+  const setupPrivateChat = (user: User) => {
+    socket.emit('privateChat', {
+      clickedUser: { username: user.username, room: user.room },
+      mainUser: { username }
+    })
+  }
 
   return (
     <Container fluid>
@@ -165,11 +162,7 @@ const Home = () => {
               onChange={(e) => setUsername(e.target.value)}
               disabled={loggedIn}
             />
-          <Button   
-            variant={
-              room === "blue" ? "primary" : "danger"
-            }
-             onClick={toggleRoom}>
+            <Button variant={room === 'blue' ? 'primary' : 'danger'} onClick={toggleRoom}>
               Room
             </Button>
           </Form>
@@ -206,7 +199,13 @@ const Home = () => {
           )}
           <ListGroup>
             {onlineUsers.map((user, index) => (
-              <ListGroup.Item key={index}  style={{color: user.room}}>{user.username}</ListGroup.Item>
+              <ListGroup.Item
+                key={index}
+                style={{ color: user.room }}
+                onClick={() => setupPrivateChat(user)}
+              >
+                {user.username}
+              </ListGroup.Item>
             ))}
           </ListGroup>
         </Col>
